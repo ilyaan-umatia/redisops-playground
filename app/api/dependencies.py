@@ -9,6 +9,7 @@ from app.services.cache import CacheService
 from app.services.events import EventService
 from app.services.jobs import JobService
 from app.services.rate_limit import RateLimitService
+from app.services.sessions import SessionService
 
 RedisDependency = Annotated[Redis, Depends(get_redis)]
 SettingsDependency = Annotated[Settings, Depends(get_settings)]
@@ -40,3 +41,10 @@ def get_cache_service(redis: RedisDependency, settings: SettingsDependency) -> C
 
 
 CacheServiceDependency = Annotated[CacheService, Depends(get_cache_service)]
+
+
+def get_session_service(redis: RedisDependency, settings: SettingsDependency) -> SessionService:
+    return SessionService(redis, settings)
+
+
+SessionServiceDependency = Annotated[SessionService, Depends(get_session_service)]

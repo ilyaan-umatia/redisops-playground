@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.api.routes import cache, events, health, jobs, metrics, rate_limit
+from app.api.routes import cache, events, health, jobs, metrics, rate_limit, sessions
 from app.config import get_settings
 from app.logging import configure_logging
 
@@ -19,6 +19,7 @@ def create_app() -> FastAPI:
     application.include_router(metrics.router)
     application.include_router(rate_limit.router)
     application.include_router(cache.router)
+    application.include_router(sessions.router)
     return application
 
 

@@ -14,6 +14,7 @@ All keys are namespaced by purpose and use lowercase colon-separated names.
 | `cache:analytics:summary` | String (JSON) | Configurable | Cached analytics summary payload |
 | `metrics:cache:hits` | String | None | Successful cache read counter |
 | `metrics:cache:misses` | String | None | Cache generation counter |
+| `session:{session_id}` | Hash | Configurable | Temporary user context and activity timestamps |
 | `lock:job:{job_id}` | String | Worker lease | Prevents two workers from processing the same job |
 
 ## Queue Direction
@@ -57,3 +58,10 @@ the cached value so expiration does not erase learning metrics.
 
 The learning version intentionally does not add cache-stampede locking yet. Worker locks
 and more advanced reliability controls are addressed in Phase 8.
+
+## Sessions
+
+Session hashes store only typed JSON-safe user context plus UTC creation and last-seen
+timestamps. `SESSION_TTL_SECONDS` enforces automatic cleanup. When rolling expiration is
+enabled, successful reads update `last_seen_at` and refresh the TTL in one transaction.
+Opaque UUID identifiers prevent clients from choosing or enumerating session keys.

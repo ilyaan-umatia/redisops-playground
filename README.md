@@ -16,6 +16,7 @@ vertical slice implements a Redis-backed background job queue with a separate wo
 - Server-Sent Events (SSE) with reconnect support
 - fixed-window counters and sliding-window sorted-set rate limiting
 - cache-aside JSON responses with TTL, metrics, and invalidation
+- expiring Redis Hash sessions with rolling expiration
 
 ## Architecture
 
@@ -88,6 +89,9 @@ docker build --target test -t redisops-tests .
 | `GET` | `/rate-limit-demo/sliding` | Exercise sliding-window limiting |
 | `GET` | `/cache-demo` | Read or generate a cached analytics summary |
 | `POST` | `/cache-demo/invalidate` | Explicitly invalidate the summary cache |
+| `POST` | `/sessions` | Create an expiring user session |
+| `GET` | `/sessions/{session_id}` | Read and refresh a session |
+| `DELETE` | `/sessions/{session_id}` | Delete a session |
 
 Both rate-limit demo routes require an `X-Client-ID` header. Allowed responses report the
 limit and remaining requests. Blocked responses return `429 Too Many Requests` with a
@@ -100,7 +104,7 @@ key contracts live in [docs/redis-keys.md](docs/redis-keys.md).
 
 ## Current Scope
 
-Phases 1-5 are implemented: foundation, Job Queue MVP, Real-Time Updates, Rate Limiting,
-and Response Cache. The cache demo exposes whether each response was a hit or miss and
-publishes cumulative counters through `/metrics`. Sessions, leaderboards, retries, and
-the dashboard intentionally come in later phases.
+Phases 1-6 are implemented: foundation, Job Queue MVP, Real-Time Updates, Rate Limiting,
+Response Cache, and Sessions. Session records are UUID-addressed hashes with automatic
+expiration and optional rolling TTL refresh. Leaderboards, retries, and the dashboard
+intentionally come in later phases.

@@ -25,6 +25,7 @@ async def client(fake_redis: fakeredis.aioredis.FakeRedis) -> AsyncIterator[Asyn
     app.dependency_overrides[get_settings] = lambda: Settings(
         job_ttl_seconds=300,
         cache_demo_delay_seconds=0,
+        session_ttl_seconds=1,
     )
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
         yield http
