@@ -11,6 +11,7 @@ vertical slice implements a Redis-backed background job queue with a separate wo
 - `BRPOPLPUSH` for safe pending-to-processing handoff
 - expiring keys with TTL
 - Redis locks for worker ownership
+- sorted sets for newest-first job indexing
 
 ## Architecture
 
@@ -74,6 +75,7 @@ docker build --target test -t redisops-tests .
 | --- | --- | --- |
 | `GET` | `/health` | Verify API and Redis connectivity |
 | `POST` | `/jobs` | Validate, persist, and enqueue a demo job |
+| `GET` | `/jobs?limit=20` | List recent jobs, newest first |
 | `GET` | `/jobs/{job_id}` | Read current job status and result |
 
 ## Project Guide
@@ -83,5 +85,7 @@ key contracts live in [docs/redis-keys.md](docs/redis-keys.md).
 
 ## Current Scope
 
-Phase 1 and the Job Queue MVP are implemented. Rate limiting, caching, sessions,
+Phase 1 and Phase 2 (the complete Job Queue MVP) are implemented. The worker dispatches
+typed jobs through a processor registry and persists both success and failure states.
+Rate limiting, caching, sessions,
 leaderboards, events, retries, and the dashboard intentionally come in later phases.

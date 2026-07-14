@@ -1,7 +1,9 @@
-from fastapi import APIRouter, HTTPException, status
+from typing import Annotated
+
+from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.dependencies import JobServiceDependency
-from app.models.job import Job, JobCreate
+from app.models.job import Job, JobCreate, JobList
 from app.services.jobs import JobNotFoundError
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -10,6 +12,15 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 @router.post("", response_model=Job, status_code=status.HTTP_202_ACCEPTED)
 async def create_job(request: JobCreate, service: JobServiceDependency) -> Job:
     return await service.create(request)
+
+
+@router.get("", response_model=JobList)
+async def list_jobs(
+    service: JobServiceDependency,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> JobList:
+    jobs = await service.list_recent(limit)
+    return JobList(items=jobs, count=len(jobs))
 
 
 @router.get("/{job_id}", response_model=Job)

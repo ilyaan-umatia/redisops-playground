@@ -8,8 +8,9 @@ from redis import Redis
 
 from app.config import get_settings
 from app.logging import configure_logging
-from app.models.job import JobStatus
+from app.models.job import JobStatus, JobType
 from app.redis.keys import job_key, job_lock_key
+from worker.processors import PROCESSORS, Processor
 
 logger = logging.getLogger(__name__)
 running = True
@@ -25,7 +26,12 @@ def update_job(redis: Redis, job_id: str, **fields: str | int) -> None:
     redis.hset(job_key(job_id), mapping=fields)
 
 
-def process_job(redis: Redis, job_id: str, delay_seconds: float) -> None:
+def process_job(
+    redis: Redis,
+    job_id: str,
+    delay_seconds: float,
+    processors: dict[JobType, Processor] | None = None,
+) -> None:
     key = job_key(job_id)
     if not redis.exists(key):
         logger.warning("job_missing job_id=%s", job_id)
@@ -37,10 +43,24 @@ def process_job(redis: Redis, job_id: str, delay_seconds: float) -> None:
         return
 
     try:
-        update_job(redis, job_id, status=JobStatus.PROCESSING.value, progress=10, error="")
+        stored_job = redis.hgetall(key)
+        job_type = JobType(stored_job["type"])
+        payload = json.loads(stored_job["payload"])
+        processor = (processors or PROCESSORS).get(job_type)
+        if processor is None:
+            raise ValueError(f"No processor registered for job type: {job_type}")
+
+        update_job(
+            redis,
+            job_id,
+            status=JobStatus.PROCESSING.value,
+            progress=10,
+            result="",
+            error="",
+        )
         logger.info("job_started job_id=%s", job_id)
         time.sleep(delay_seconds)
-        result = {"message": "Demo report generated", "records_processed": 100}
+        result = processor(payload)
         update_job(
             redis,
             job_id,
@@ -50,7 +70,13 @@ def process_job(redis: Redis, job_id: str, delay_seconds: float) -> None:
         )
         logger.info("job_completed job_id=%s", job_id)
     except Exception as exc:
-        update_job(redis, job_id, status=JobStatus.FAILED.value, error=str(exc))
+        update_job(
+            redis,
+            job_id,
+            status=JobStatus.FAILED.value,
+            result="",
+            error=str(exc),
+        )
         logger.exception("job_failed job_id=%s", job_id)
     finally:
         if lock.owned():

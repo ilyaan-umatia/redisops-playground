@@ -29,6 +29,19 @@ async def test_get_unknown_job_returns_404(client: AsyncClient) -> None:
     assert response.json() == {"detail": "Job not found"}
 
 
+async def test_list_jobs_returns_newest_first(client: AsyncClient) -> None:
+    first = await client.post("/jobs", json={"user_id": "learner-1", "payload": {}})
+    second = await client.post("/jobs", json={"user_id": "learner-2", "payload": {}})
+
+    response = await client.get("/jobs", params={"limit": 1})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 1
+    assert body["items"][0]["id"] == second.json()["id"]
+    assert body["items"][0]["id"] != first.json()["id"]
+
+
 async def test_create_job_validates_user_id(client: AsyncClient) -> None:
     response = await client.post(
         "/jobs",
