@@ -42,7 +42,8 @@ docker compose up --build
 ```
 
 Open the interactive API docs at <http://localhost:8000/docs>. Redis is exposed on port
-`6379` for learning and inspection.
+`6379` for learning and inspection. The live operations dashboard is available at
+<http://localhost:8000/>.
 
 Create a demo job:
 
@@ -107,11 +108,22 @@ standard `Retry-After` header. Limits and window lengths are configurable throug
 ## Project Guide
 
 See [AGENT.md](AGENT.md) for the complete roadmap and agent development rules. Redis
-key contracts live in [docs/redis-keys.md](docs/redis-keys.md).
+key contracts live in [docs/redis-keys.md](docs/redis-keys.md). The
+[architecture guide](docs/architecture.md) explains component boundaries and job state,
+while [Redis patterns](docs/redis-patterns.md) maps each feature to its data structure.
+
+Run every local quality check with:
+
+```powershell
+.\scripts\check.cmd
+```
+
+Start the Docker development stack with `.\scripts\dev.cmd`. The command wrappers handle
+restrictive Windows PowerShell execution policies. GitHub Actions runs the
+same lint, test, and compile gates for every push and pull request.
 
 ## Current Scope
 
-Phases 1-8 are implemented. Worker failures use non-blocking exponential retry scheduling,
-exhausted jobs remain inspectable in a dead-letter list, and manual retry safely resets a
-final failure. Structured JSON logs and queue-depth metrics support troubleshooting. The
-dashboard and final integration polish come in Phase 9.
+All nine planned phases are implemented. The final dashboard provides a responsive live
+view of queue health, jobs, rankings, and activity; architecture and Redis-pattern guides
+turn the repository into a reusable learning reference.
