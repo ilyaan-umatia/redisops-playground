@@ -11,6 +11,9 @@ All keys are namespaced by purpose and use lowercase colon-separated names.
 | `events:jobs` | Stream | Capped length | Durable ordered job lifecycle events for history and SSE clients |
 | `rate_limit:fixed:{route}:{client_id}:{bucket}` | String | Two windows | Time-bucketed request counter |
 | `rate_limit:sliding:{route}:{client_id}` | Sorted set | Window length | Request timestamps in the active sliding window |
+| `cache:analytics:summary` | String (JSON) | Configurable | Cached analytics summary payload |
+| `metrics:cache:hits` | String | None | Successful cache read counter |
+| `metrics:cache:misses` | String | None | Cache generation counter |
 | `lock:job:{job_id}` | String | Worker lease | Prevents two workers from processing the same job |
 
 ## Queue Direction
@@ -44,3 +47,13 @@ The sliding-window limiter removes expired timestamps and stores each accepted r
 a sorted set. It uses `WATCH/MULTI` optimistic transactions so concurrent requests cannot
 both consume the final slot. This strategy is smoother and more precise but uses more
 memory and commands per request.
+
+## Response Cache
+
+The analytics demo uses cache-aside behavior: read Redis first, calculate only on a miss,
+then store serialized JSON with `CACHE_TTL_SECONDS`. Explicit invalidation deletes the
+resource key; the next read regenerates it. Hit and miss counters remain independent of
+the cached value so expiration does not erase learning metrics.
+
+The learning version intentionally does not add cache-stampede locking yet. Worker locks
+and more advanced reliability controls are addressed in Phase 8.
