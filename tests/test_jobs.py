@@ -49,3 +49,47 @@ async def test_create_job_validates_user_id(client: AsyncClient) -> None:
     )
 
     assert response.status_code == 422
+
+
+async def test_failed_job_can_be_manually_retried(
+    client: AsyncClient, fake_redis: fakeredis.aioredis.FakeRedis
+) -> None:
+    created = await client.post(
+        "/jobs",
+        json={"user_id": "retry-user", "payload": {}, "max_retries": 0},
+    )
+    job_id = created.json()["id"]
+    await fake_redis.hset(f"job:{job_id}", mapping={"status": "failed", "error": "boom"})
+    await fake_redis.lpush("queue:jobs:dead-letter", job_id)
+
+    response = await client.post(f"/jobs/{job_id}/retry")
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "queued"
+    assert response.json()["retry_count"] == 0
+    assert await fake_redis.lrange("queue:jobs:dead-letter", 0, -1) == []
+
+
+async def test_queued_job_cannot_be_manually_retried(client: AsyncClient) -> None:
+    created = await client.post("/jobs", json={"user_id": "queued-user", "payload": {}})
+
+    response = await client.post(f"/jobs/{created.json()['id']}/retry")
+
+    assert response.status_code == 409
+
+
+async def test_dead_letter_endpoint_lists_failed_jobs(
+    client: AsyncClient, fake_redis: fakeredis.aioredis.FakeRedis
+) -> None:
+    created = await client.post(
+        "/jobs",
+        json={"user_id": "dead-letter-user", "payload": {}, "max_retries": 0},
+    )
+    job_id = created.json()["id"]
+    await fake_redis.hset(f"job:{job_id}", "status", "failed")
+    await fake_redis.lpush("queue:jobs:dead-letter", job_id)
+
+    response = await client.get("/jobs/dead-letter")
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["id"] == job_id

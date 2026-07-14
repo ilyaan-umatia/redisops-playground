@@ -2,7 +2,7 @@ import json
 import logging
 import signal
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from redis import Redis
 
@@ -36,6 +36,9 @@ def transition_job(
     detail: dict[str, str | int | float | bool] | None = None,
     leaderboard_key: str | None = None,
     leaderboard_user_id: str | None = None,
+    retry_queue_key: str | None = None,
+    retry_score: float | None = None,
+    dead_letter_key: str | None = None,
     **fields: str | int,
 ) -> None:
     occurred_at = datetime.now(UTC)
@@ -68,7 +71,45 @@ def transition_job(
         )
         if leaderboard_key is not None and leaderboard_user_id is not None:
             pipeline.zincrby(leaderboard_key, 1, leaderboard_user_id)
+        if retry_queue_key is not None and retry_score is not None:
+            pipeline.zadd(retry_queue_key, {job_id: retry_score})
+        if dead_letter_key is not None:
+            pipeline.lpush(dead_letter_key, job_id)
         pipeline.execute()
+
+
+def promote_due_retries(
+    redis: Redis,
+    retry_queue_key: str,
+    pending_queue_key: str,
+    *,
+    now: float | None = None,
+    limit: int = 100,
+) -> int:
+    current_time = now if now is not None else time.time()
+    promoted = 0
+    for _ in range(limit):
+        entries = redis.zpopmin(retry_queue_key, 1)
+        if not entries:
+            break
+        job_id, score = entries[0]
+        if score > current_time:
+            redis.zadd(retry_queue_key, {job_id: score})
+            break
+        if redis.exists(job_key(job_id)):
+            with redis.pipeline(transaction=True) as pipeline:
+                pipeline.hset(
+                    job_key(job_id),
+                    mapping={
+                        "status": JobStatus.QUEUED.value,
+                        "next_retry_at": "",
+                        "updated_at": datetime.now(UTC).isoformat(),
+                    },
+                )
+                pipeline.lpush(pending_queue_key, job_id)
+                pipeline.execute()
+            promoted += 1
+    return promoted
 
 
 def process_job(
@@ -81,6 +122,9 @@ def process_job(
     activity_stream_key: str = "events:activity",
     activity_max_length: int = 500,
     leaderboard_key: str = "leaderboard:users",
+    retry_queue_key: str = "queue:jobs:retry",
+    dead_letter_key: str = "queue:jobs:dead-letter",
+    retry_backoff_seconds: int = 2,
 ) -> None:
     key = job_key(job_id)
     if not redis.exists(key):
@@ -92,6 +136,7 @@ def process_job(
         logger.info("job_already_owned job_id=%s", job_id)
         return
 
+    stored_job: dict[str, str] = {}
     try:
         stored_job = redis.hgetall(key)
         job_type = JobType(stored_job["type"])
@@ -134,20 +179,53 @@ def process_job(
         )
         logger.info("job_completed job_id=%s", job_id)
     except Exception as exc:
-        transition_job(
-            redis,
-            job_id,
-            JobEventType.FAILED,
-            JobStatus.FAILED,
-            stream_key,
-            stream_max_length,
-            activity_stream_key,
-            activity_max_length,
-            detail={"error": str(exc)},
-            result="",
-            error=str(exc),
-        )
-        logger.exception("job_failed job_id=%s", job_id)
+        retry_count = int(stored_job.get("retry_count", 0)) + 1
+        max_retries = int(stored_job.get("max_retries", 0))
+        if retry_count <= max_retries:
+            backoff = retry_backoff_seconds * (2 ** (retry_count - 1))
+            next_retry = datetime.now(UTC) + timedelta(seconds=backoff)
+            transition_job(
+                redis,
+                job_id,
+                JobEventType.RETRYING,
+                JobStatus.RETRYING,
+                stream_key,
+                stream_max_length,
+                activity_stream_key,
+                activity_max_length,
+                detail={"error": str(exc), "retry_count": retry_count},
+                retry_queue_key=retry_queue_key,
+                retry_score=next_retry.timestamp(),
+                retry_count=retry_count,
+                next_retry_at=next_retry.isoformat(),
+                result="",
+                error=str(exc),
+            )
+            logger.warning(
+                "job_retry_scheduled job_id=%s retry_count=%s backoff_seconds=%s",
+                job_id,
+                retry_count,
+                backoff,
+                exc_info=True,
+            )
+        else:
+            transition_job(
+                redis,
+                job_id,
+                JobEventType.FAILED,
+                JobStatus.FAILED,
+                stream_key,
+                stream_max_length,
+                activity_stream_key,
+                activity_max_length,
+                detail={"error": str(exc), "retry_count": retry_count},
+                dead_letter_key=dead_letter_key,
+                retry_count=retry_count,
+                next_retry_at="",
+                result="",
+                error=str(exc),
+            )
+            logger.exception("job_dead_lettered job_id=%s retry_count=%s", job_id, retry_count)
     finally:
         if lock.owned():
             lock.release()
@@ -162,6 +240,11 @@ def run() -> None:
     logger.info("worker_started queue=%s", settings.job_queue_key)
 
     while running:
+        promote_due_retries(
+            redis,
+            settings.job_retry_queue_key,
+            settings.job_queue_key,
+        )
         job_id = redis.brpoplpush(
             settings.job_queue_key,
             settings.job_processing_key,
@@ -179,6 +262,9 @@ def run() -> None:
                 activity_stream_key=settings.activity_stream_key,
                 activity_max_length=settings.activity_max_length,
                 leaderboard_key=settings.leaderboard_key,
+                retry_queue_key=settings.job_retry_queue_key,
+                dead_letter_key=settings.job_dead_letter_key,
+                retry_backoff_seconds=settings.job_retry_backoff_seconds,
             )
         finally:
             redis.lrem(settings.job_processing_key, 1, job_id)

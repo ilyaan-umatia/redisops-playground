@@ -15,11 +15,17 @@ async def queue_metrics(redis: RedisDependency, settings: SettingsDependency) ->
         pipeline.xlen(settings.job_events_stream_key)
         pipeline.get(CACHE_HITS_KEY)
         pipeline.get(CACHE_MISSES_KEY)
-        pending, processing, events, hits, misses = await pipeline.execute()
+        pipeline.zcard(settings.job_retry_queue_key)
+        pipeline.llen(settings.job_dead_letter_key)
+        pending, processing, events, hits, misses, retrying, dead_letters = (
+            await pipeline.execute()
+        )
     return QueueMetrics(
         pending_jobs=pending,
         processing_jobs=processing,
         recorded_events=events,
         cache_hits=int(hits or 0),
         cache_misses=int(misses or 0),
+        retrying_jobs=retrying,
+        dead_letter_jobs=dead_letters,
     )

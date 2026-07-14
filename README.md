@@ -18,6 +18,7 @@ vertical slice implements a Redis-backed background job queue with a separate wo
 - cache-aside JSON responses with TTL, metrics, and invalidation
 - expiring Redis Hash sessions with rolling expiration
 - sorted-set completion leaderboard and bounded activity feed
+- delayed exponential retries, dead-letter queue, and manual recovery
 
 ## Architecture
 
@@ -96,6 +97,8 @@ docker build --target test -t redisops-tests .
 | `GET` | `/leaderboard` | List top users by completed jobs |
 | `GET` | `/leaderboard/{user_id}` | Read a user's score and rank |
 | `GET` | `/activity` | Read recent human-readable activity |
+| `GET` | `/jobs/dead-letter` | Inspect jobs that exhausted retries |
+| `POST` | `/jobs/{job_id}/retry` | Manually requeue a final failed job |
 
 Both rate-limit demo routes require an `X-Client-ID` header. Allowed responses report the
 limit and remaining requests. Blocked responses return `429 Too Many Requests` with a
@@ -108,6 +111,7 @@ key contracts live in [docs/redis-keys.md](docs/redis-keys.md).
 
 ## Current Scope
 
-Phases 1-7 are implemented. Successful job completion updates a Redis sorted-set
-leaderboard transactionally, while a capped Stream exposes recent human-readable system
-activity. Reliability hardening and the dashboard intentionally come in later phases.
+Phases 1-8 are implemented. Worker failures use non-blocking exponential retry scheduling,
+exhausted jobs remain inspectable in a dead-letter list, and manual retry safely resets a
+final failure. Structured JSON logs and queue-depth metrics support troubleshooting. The
+dashboard and final integration polish come in Phase 9.

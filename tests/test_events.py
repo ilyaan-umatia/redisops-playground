@@ -38,6 +38,8 @@ async def test_metrics_report_queue_and_event_depth(
         "recorded_events": 1,
         "cache_hits": 0,
         "cache_misses": 0,
+        "retrying_jobs": 0,
+        "dead_letter_jobs": 0,
     }
 
 
