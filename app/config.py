@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     cache_demo_delay_seconds: float = Field(default=0.2, ge=0, le=10)
     session_ttl_seconds: int = Field(default=1_800, ge=1, le=604_800)
     session_rolling_expiration: bool = True
+    leaderboard_key: str = "leaderboard:users"
+    activity_stream_key: str = "events:activity"
+    activity_max_length: int = Field(default=500, ge=100, le=100_000)
     job_ttl_seconds: int = Field(default=86_400, ge=60)
     worker_poll_timeout_seconds: int = Field(default=5, ge=1, le=60)
     worker_job_delay_seconds: float = Field(default=2, ge=0, le=60)

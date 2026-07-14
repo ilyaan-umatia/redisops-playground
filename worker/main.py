@@ -10,7 +10,7 @@ from app.config import get_settings
 from app.logging import configure_logging
 from app.models.event import JobEventType
 from app.models.job import JobStatus, JobType
-from app.redis.events import job_event_fields
+from app.redis.events import activity_event_fields, job_event_fields
 from app.redis.keys import job_key, job_lock_key
 from worker.processors import PROCESSORS, Processor
 
@@ -30,8 +30,12 @@ def transition_job(
     status: JobStatus,
     stream_key: str,
     stream_max_length: int,
+    activity_stream_key: str,
+    activity_max_length: int,
     *,
     detail: dict[str, str | int | float | bool] | None = None,
+    leaderboard_key: str | None = None,
+    leaderboard_user_id: str | None = None,
     **fields: str | int,
 ) -> None:
     occurred_at = datetime.now(UTC)
@@ -51,6 +55,19 @@ def transition_job(
             maxlen=stream_max_length,
             approximate=True,
         )
+        pipeline.xadd(
+            activity_stream_key,
+            activity_event_fields(
+                event_type.value,
+                f"Job status changed to {status.value}",
+                job_id,
+                timestamp=occurred_at,
+            ),
+            maxlen=activity_max_length,
+            approximate=True,
+        )
+        if leaderboard_key is not None and leaderboard_user_id is not None:
+            pipeline.zincrby(leaderboard_key, 1, leaderboard_user_id)
         pipeline.execute()
 
 
@@ -61,6 +78,9 @@ def process_job(
     processors: dict[JobType, Processor] | None = None,
     stream_key: str = "events:jobs",
     stream_max_length: int = 1_000,
+    activity_stream_key: str = "events:activity",
+    activity_max_length: int = 500,
+    leaderboard_key: str = "leaderboard:users",
 ) -> None:
     key = job_key(job_id)
     if not redis.exists(key):
@@ -88,6 +108,8 @@ def process_job(
             JobStatus.PROCESSING,
             stream_key,
             stream_max_length,
+            activity_stream_key,
+            activity_max_length,
             progress=10,
             result="",
             error="",
@@ -102,7 +124,11 @@ def process_job(
             JobStatus.COMPLETED,
             stream_key,
             stream_max_length,
+            activity_stream_key,
+            activity_max_length,
             detail=result,
+            leaderboard_key=leaderboard_key,
+            leaderboard_user_id=stored_job["user_id"],
             progress=100,
             result=json.dumps(result),
         )
@@ -115,6 +141,8 @@ def process_job(
             JobStatus.FAILED,
             stream_key,
             stream_max_length,
+            activity_stream_key,
+            activity_max_length,
             detail={"error": str(exc)},
             result="",
             error=str(exc),
@@ -148,6 +176,9 @@ def run() -> None:
                 settings.worker_job_delay_seconds,
                 stream_key=settings.job_events_stream_key,
                 stream_max_length=settings.job_events_max_length,
+                activity_stream_key=settings.activity_stream_key,
+                activity_max_length=settings.activity_max_length,
+                leaderboard_key=settings.leaderboard_key,
             )
         finally:
             redis.lrem(settings.job_processing_key, 1, job_id)

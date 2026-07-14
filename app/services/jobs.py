@@ -7,7 +7,7 @@ from redis.asyncio import Redis
 from app.config import Settings
 from app.models.event import JobEventType
 from app.models.job import Job, JobCreate, JobStatus
-from app.redis.events import job_event_fields
+from app.redis.events import activity_event_fields, job_event_fields
 from app.redis.keys import job_key
 
 
@@ -43,6 +43,17 @@ class JobService:
                 self.settings.job_events_stream_key,
                 job_event_fields(JobEventType.CREATED, job.id, JobStatus.QUEUED, timestamp=now),
                 maxlen=self.settings.job_events_max_length,
+                approximate=True,
+            )
+            pipeline.xadd(
+                self.settings.activity_stream_key,
+                activity_event_fields(
+                    "job.created",
+                    f"Job submitted by {job.user_id}",
+                    job.id,
+                    timestamp=now,
+                ),
+                maxlen=self.settings.activity_max_length,
                 approximate=True,
             )
             await pipeline.execute()

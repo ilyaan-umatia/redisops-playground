@@ -8,6 +8,7 @@ from app.redis.client import get_redis
 from app.services.cache import CacheService
 from app.services.events import EventService
 from app.services.jobs import JobService
+from app.services.leaderboard import LeaderboardService
 from app.services.rate_limit import RateLimitService
 from app.services.sessions import SessionService
 
@@ -48,3 +49,13 @@ def get_session_service(redis: RedisDependency, settings: SettingsDependency) ->
 
 
 SessionServiceDependency = Annotated[SessionService, Depends(get_session_service)]
+
+
+def get_leaderboard_service(
+    redis: RedisDependency,
+    settings: SettingsDependency,
+) -> LeaderboardService:
+    return LeaderboardService(redis, settings)
+
+
+LeaderboardServiceDependency = Annotated[LeaderboardService, Depends(get_leaderboard_service)]
