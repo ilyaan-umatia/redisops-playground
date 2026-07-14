@@ -5,7 +5,9 @@ from uuid import uuid4
 from redis.asyncio import Redis
 
 from app.config import Settings
+from app.models.event import JobEventType
 from app.models.job import Job, JobCreate, JobStatus
+from app.redis.events import job_event_fields
 from app.redis.keys import job_key
 
 
@@ -37,6 +39,12 @@ class JobService:
             pipeline.expire(key, self.settings.job_ttl_seconds)
             pipeline.zadd(self.settings.job_index_key, {job.id: now.timestamp()})
             pipeline.lpush(self.settings.job_queue_key, job.id)
+            pipeline.xadd(
+                self.settings.job_events_stream_key,
+                job_event_fields(JobEventType.CREATED, job.id, JobStatus.QUEUED, timestamp=now),
+                maxlen=self.settings.job_events_max_length,
+                approximate=True,
+            )
             await pipeline.execute()
         return job
 

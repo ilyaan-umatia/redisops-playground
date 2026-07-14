@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.api.routes import health, jobs
+from app.api.routes import events, health, jobs, metrics
 from app.config import get_settings
 from app.logging import configure_logging
 
@@ -15,6 +15,8 @@ def create_app() -> FastAPI:
     )
     application.include_router(health.router)
     application.include_router(jobs.router)
+    application.include_router(events.router)
+    application.include_router(metrics.router)
     return application
 
 

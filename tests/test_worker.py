@@ -54,6 +54,8 @@ def test_worker_completes_demo_job() -> None:
     lock.acquire.assert_called_once_with(blocking=False)
     lock.release.assert_called_once_with()
     assert observed_statuses == ["processing"]
+    events = redis.xrange("events:jobs")
+    assert [fields["type"] for _, fields in events] == ["job.started", "job.completed"]
 
 
 def test_worker_marks_processor_failure() -> None:
@@ -82,3 +84,5 @@ def test_worker_marks_processor_failure() -> None:
     assert stored["status"] == "failed"
     assert stored["result"] == ""
     assert stored["error"] == "Demo report generation failed"
+    events = redis.xrange("events:jobs")
+    assert [fields["type"] for _, fields in events] == ["job.started", "job.failed"]
