@@ -8,7 +8,9 @@ from redis import Redis
 
 from app.config import get_settings
 from app.logging import configure_logging
+from app.models.event import JobEventType
 from app.models.job import JobStatus, JobType
+from app.redis.events import job_event_fields
 from app.redis.keys import job_key, job_lock_key
 from worker.processors import PROCESSORS, Processor
 
@@ -21,9 +23,35 @@ def stop_worker(_signum: int, _frame: object) -> None:
     running = False
 
 
-def update_job(redis: Redis, job_id: str, **fields: str | int) -> None:
-    fields["updated_at"] = datetime.now(UTC).isoformat()
-    redis.hset(job_key(job_id), mapping=fields)
+def transition_job(
+    redis: Redis,
+    job_id: str,
+    event_type: JobEventType,
+    status: JobStatus,
+    stream_key: str,
+    stream_max_length: int,
+    *,
+    detail: dict[str, str | int | float | bool] | None = None,
+    **fields: str | int,
+) -> None:
+    occurred_at = datetime.now(UTC)
+    fields["status"] = status.value
+    fields["updated_at"] = occurred_at.isoformat()
+    with redis.pipeline(transaction=True) as pipeline:
+        pipeline.hset(job_key(job_id), mapping=fields)
+        pipeline.xadd(
+            stream_key,
+            job_event_fields(
+                event_type,
+                job_id,
+                status,
+                timestamp=occurred_at,
+                detail=detail,
+            ),
+            maxlen=stream_max_length,
+            approximate=True,
+        )
+        pipeline.execute()
 
 
 def process_job(
@@ -31,6 +59,8 @@ def process_job(
     job_id: str,
     delay_seconds: float,
     processors: dict[JobType, Processor] | None = None,
+    stream_key: str = "events:jobs",
+    stream_max_length: int = 1_000,
 ) -> None:
     key = job_key(job_id)
     if not redis.exists(key):
@@ -46,14 +76,18 @@ def process_job(
         stored_job = redis.hgetall(key)
         job_type = JobType(stored_job["type"])
         payload = json.loads(stored_job["payload"])
-        processor = (processors or PROCESSORS).get(job_type)
+        registry = processors if processors is not None else PROCESSORS
+        processor = registry.get(job_type)
         if processor is None:
             raise ValueError(f"No processor registered for job type: {job_type}")
 
-        update_job(
+        transition_job(
             redis,
             job_id,
-            status=JobStatus.PROCESSING.value,
+            JobEventType.STARTED,
+            JobStatus.PROCESSING,
+            stream_key,
+            stream_max_length,
             progress=10,
             result="",
             error="",
@@ -61,19 +95,27 @@ def process_job(
         logger.info("job_started job_id=%s", job_id)
         time.sleep(delay_seconds)
         result = processor(payload)
-        update_job(
+        transition_job(
             redis,
             job_id,
-            status=JobStatus.COMPLETED.value,
+            JobEventType.COMPLETED,
+            JobStatus.COMPLETED,
+            stream_key,
+            stream_max_length,
+            detail=result,
             progress=100,
             result=json.dumps(result),
         )
         logger.info("job_completed job_id=%s", job_id)
     except Exception as exc:
-        update_job(
+        transition_job(
             redis,
             job_id,
-            status=JobStatus.FAILED.value,
+            JobEventType.FAILED,
+            JobStatus.FAILED,
+            stream_key,
+            stream_max_length,
+            detail={"error": str(exc)},
             result="",
             error=str(exc),
         )
@@ -100,7 +142,13 @@ def run() -> None:
         if job_id is None:
             continue
         try:
-            process_job(redis, job_id, settings.worker_job_delay_seconds)
+            process_job(
+                redis,
+                job_id,
+                settings.worker_job_delay_seconds,
+                stream_key=settings.job_events_stream_key,
+                stream_max_length=settings.job_events_max_length,
+            )
         finally:
             redis.lrem(settings.job_processing_key, 1, job_id)
 
