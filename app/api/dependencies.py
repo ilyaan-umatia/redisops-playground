@@ -5,6 +5,7 @@ from redis.asyncio import Redis
 
 from app.config import Settings, get_settings
 from app.redis.client import get_redis
+from app.services.cache import CacheService
 from app.services.events import EventService
 from app.services.jobs import JobService
 from app.services.rate_limit import RateLimitService
@@ -32,3 +33,10 @@ def get_rate_limit_service(redis: RedisDependency) -> RateLimitService:
 
 
 RateLimitServiceDependency = Annotated[RateLimitService, Depends(get_rate_limit_service)]
+
+
+def get_cache_service(redis: RedisDependency, settings: SettingsDependency) -> CacheService:
+    return CacheService(redis, settings)
+
+
+CacheServiceDependency = Annotated[CacheService, Depends(get_cache_service)]

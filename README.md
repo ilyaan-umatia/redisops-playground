@@ -15,6 +15,7 @@ vertical slice implements a Redis-backed background job queue with a separate wo
 - Redis Streams for durable real-time lifecycle events
 - Server-Sent Events (SSE) with reconnect support
 - fixed-window counters and sliding-window sorted-set rate limiting
+- cache-aside JSON responses with TTL, metrics, and invalidation
 
 ## Architecture
 
@@ -85,6 +86,8 @@ docker build --target test -t redisops-tests .
 | `GET` | `/metrics` | Read pending, processing, and event counts |
 | `GET` | `/rate-limit-demo/fixed` | Exercise fixed-window limiting |
 | `GET` | `/rate-limit-demo/sliding` | Exercise sliding-window limiting |
+| `GET` | `/cache-demo` | Read or generate a cached analytics summary |
+| `POST` | `/cache-demo/invalidate` | Explicitly invalidate the summary cache |
 
 Both rate-limit demo routes require an `X-Client-ID` header. Allowed responses report the
 limit and remaining requests. Blocked responses return `429 Too Many Requests` with a
@@ -97,7 +100,7 @@ key contracts live in [docs/redis-keys.md](docs/redis-keys.md).
 
 ## Current Scope
 
-Phases 1-4 are implemented: foundation, Job Queue MVP, Real-Time Updates, and Rate
-Limiting. The API includes both fixed and sliding-window algorithms so their Redis cost
-and boundary behavior can be compared. Caching, sessions, leaderboards, retries, and the
-dashboard intentionally come in later phases.
+Phases 1-5 are implemented: foundation, Job Queue MVP, Real-Time Updates, Rate Limiting,
+and Response Cache. The cache demo exposes whether each response was a hit or miss and
+publishes cumulative counters through `/metrics`. Sessions, leaderboards, retries, and
+the dashboard intentionally come in later phases.

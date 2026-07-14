@@ -36,6 +36,8 @@ async def test_metrics_report_queue_and_event_depth(
         "pending_jobs": 1,
         "processing_jobs": 1,
         "recorded_events": 1,
+        "cache_hits": 0,
+        "cache_misses": 0,
     }
 
 

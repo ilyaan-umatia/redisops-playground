@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     fixed_rate_window_seconds: int = Field(default=60, ge=1, le=86_400)
     sliding_rate_limit: int = Field(default=5, ge=1, le=10_000)
     sliding_rate_window_seconds: int = Field(default=60, ge=1, le=86_400)
+    cache_demo_key: str = "cache:analytics:summary"
+    cache_ttl_seconds: int = Field(default=30, ge=1, le=86_400)
+    cache_demo_delay_seconds: float = Field(default=0.2, ge=0, le=10)
     job_ttl_seconds: int = Field(default=86_400, ge=60)
     worker_poll_timeout_seconds: int = Field(default=5, ge=1, le=60)
     worker_job_delay_seconds: float = Field(default=2, ge=0, le=60)
