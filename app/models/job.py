@@ -34,3 +34,8 @@ class Job(BaseModel):
     error: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class JobList(BaseModel):
+    items: list[Job]
+    count: int

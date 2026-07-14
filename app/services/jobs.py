@@ -35,9 +35,26 @@ class JobService:
         async with self.redis.pipeline(transaction=True) as pipeline:
             pipeline.hset(key, mapping=self._to_redis(job))
             pipeline.expire(key, self.settings.job_ttl_seconds)
+            pipeline.zadd(self.settings.job_index_key, {job.id: now.timestamp()})
             pipeline.lpush(self.settings.job_queue_key, job.id)
             await pipeline.execute()
         return job
+
+    async def list_recent(self, limit: int) -> list[Job]:
+        job_ids = await self.redis.zrevrange(self.settings.job_index_key, 0, limit - 1)
+        if not job_ids:
+            return []
+
+        async with self.redis.pipeline(transaction=False) as pipeline:
+            for job_id in job_ids:
+                pipeline.hgetall(job_key(job_id))
+            stored_jobs = await pipeline.execute()
+
+        jobs = [self._from_redis(data) for data in stored_jobs if data]
+        stale_ids = [job_id for job_id, data in zip(job_ids, stored_jobs, strict=True) if not data]
+        if stale_ids:
+            await self.redis.zrem(self.settings.job_index_key, *stale_ids)
+        return jobs
 
     async def get(self, job_id: str) -> Job:
         data = await self.redis.hgetall(job_key(job_id))
