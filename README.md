@@ -3,7 +3,7 @@
 RedisOps Playground is a learning-first, production-style FastAPI project. Its first
 vertical slice implements a Redis-backed background job queue with a separate worker.
 
-## What You Learn In This Phase
+## Features implemented:
 
 - Redis hashes for durable job state
 - Redis lists for FIFO queueing
@@ -101,29 +101,5 @@ docker build --target test -t redisops-tests .
 | `GET` | `/jobs/dead-letter` | Inspect jobs that exhausted retries |
 | `POST` | `/jobs/{job_id}/retry` | Manually requeue a final failed job |
 
-Both rate-limit demo routes require an `X-Client-ID` header. Allowed responses report the
-limit and remaining requests. Blocked responses return `429 Too Many Requests` with a
-standard `Retry-After` header. Limits and window lengths are configurable through `.env`.
-
-## Project Guide
-
-See [AGENT.md](AGENT.md) for the complete roadmap and agent development rules. Redis
-key contracts live in [docs/redis-keys.md](docs/redis-keys.md). The
-[architecture guide](docs/architecture.md) explains component boundaries and job state,
-while [Redis patterns](docs/redis-patterns.md) maps each feature to its data structure.
-
-Run every local quality check with:
-
-```powershell
-.\scripts\check.cmd
-```
-
-Start the Docker development stack with `.\scripts\dev.cmd`. The command wrappers handle
-restrictive Windows PowerShell execution policies. GitHub Actions runs the
-same lint, test, and compile gates for every push and pull request.
-
-## Current Scope
-
-All nine planned phases are implemented. The final dashboard provides a responsive live
 view of queue health, jobs, rankings, and activity; architecture and Redis-pattern guides
 turn the repository into a reusable learning reference.
