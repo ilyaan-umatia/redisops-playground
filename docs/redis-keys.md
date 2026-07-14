@@ -17,6 +17,8 @@ All keys are namespaced by purpose and use lowercase colon-separated names.
 | `session:{session_id}` | Hash | Configurable | Temporary user context and activity timestamps |
 | `leaderboard:users` | Sorted set | None | Completed-job score per user |
 | `events:activity` | Stream | Capped length | Recent user-visible system activity |
+| `queue:jobs:retry` | Sorted set | None | Failed job IDs scored by next retry time |
+| `queue:jobs:dead-letter` | List | None | Exhausted job IDs awaiting inspection/manual retry |
 | `lock:job:{job_id}` | String | Worker lease | Prevents two workers from processing the same job |
 
 ## Queue Direction
@@ -77,3 +79,14 @@ users and `ZREVRANK` provides a zero-based Redis rank that the API converts to o
 The activity Stream is approximately capped at `ACTIVITY_MAX_LENGTH`. It provides a
 human-readable feed separate from the structured job lifecycle Stream and currently
 records job submission and processing transitions.
+
+## Retry And Dead-Letter Flow
+
+Transient failures increment `retry_count` and schedule the job in `queue:jobs:retry` with
+an exponential backoff score. Workers use atomic `ZPOPMIN` to claim due retries and move
+them back to the pending list without blocking job processing. When `max_retries` is
+exceeded, the final failed transition and dead-letter insertion happen in one transaction.
+
+`POST /jobs/{job_id}/retry` resets retry metadata and requeues only final failed jobs.
+Per-job expiring locks prevent two workers from processing the same ID concurrently.
+Retry and dead-letter depths are exposed by `/metrics` for operational visibility.

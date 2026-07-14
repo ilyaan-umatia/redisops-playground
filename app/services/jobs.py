@@ -15,6 +15,10 @@ class JobNotFoundError(Exception):
     pass
 
 
+class JobNotRetryableError(Exception):
+    pass
+
+
 class JobService:
     def __init__(self, redis: Redis, settings: Settings) -> None:
         self.redis = redis
@@ -29,6 +33,8 @@ class JobService:
             status=JobStatus.QUEUED,
             payload=request.payload,
             progress=0,
+            retry_count=0,
+            max_retries=request.max_retries,
             created_at=now,
             updated_at=now,
         )
@@ -81,12 +87,44 @@ class JobService:
             raise JobNotFoundError(job_id)
         return self._from_redis(data)
 
+    async def dead_letters(self, limit: int) -> list[Job]:
+        job_ids = await self.redis.lrange(self.settings.job_dead_letter_key, 0, limit - 1)
+        if not job_ids:
+            return []
+        async with self.redis.pipeline(transaction=False) as pipeline:
+            for job_id in job_ids:
+                pipeline.hgetall(job_key(job_id))
+            jobs = await pipeline.execute()
+        return [self._from_redis(data) for data in jobs if data]
+
+    async def retry(self, job_id: str) -> Job:
+        job = await self.get(job_id)
+        if job.status is not JobStatus.FAILED:
+            raise JobNotRetryableError(job_id)
+        now = datetime.now(UTC)
+        async with self.redis.pipeline(transaction=True) as pipeline:
+            pipeline.hset(
+                job_key(job_id),
+                mapping={
+                    "status": JobStatus.QUEUED.value,
+                    "retry_count": "0",
+                    "next_retry_at": "",
+                    "error": "",
+                    "updated_at": now.isoformat(),
+                },
+            )
+            pipeline.lrem(self.settings.job_dead_letter_key, 0, job_id)
+            pipeline.lpush(self.settings.job_queue_key, job_id)
+            await pipeline.execute()
+        return await self.get(job_id)
+
     @staticmethod
     def _to_redis(job: Job) -> dict[str, str]:
         data = job.model_dump(mode="json")
         data["payload"] = json.dumps(data["payload"])
         data["result"] = json.dumps(data["result"]) if data["result"] is not None else ""
         data["error"] = data["error"] or ""
+        data["next_retry_at"] = data["next_retry_at"] or ""
         return {key: str(value) for key, value in data.items()}
 
     @staticmethod
@@ -96,4 +134,7 @@ class JobService:
         normalized["result"] = json.loads(normalized["result"]) if normalized["result"] else None
         normalized["error"] = normalized["error"] or None
         normalized["progress"] = int(normalized["progress"])
+        normalized["retry_count"] = int(normalized.get("retry_count", 0))
+        normalized["max_retries"] = int(normalized.get("max_retries", 0))
+        normalized["next_retry_at"] = normalized.get("next_retry_at") or None
         return Job.model_validate(normalized)

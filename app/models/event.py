@@ -11,6 +11,7 @@ class JobEventType(StrEnum):
     STARTED = "job.started"
     COMPLETED = "job.completed"
     FAILED = "job.failed"
+    RETRYING = "job.retrying"
 
 
 class JobEvent(BaseModel):
