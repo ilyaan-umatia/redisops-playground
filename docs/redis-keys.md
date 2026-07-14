@@ -15,6 +15,8 @@ All keys are namespaced by purpose and use lowercase colon-separated names.
 | `metrics:cache:hits` | String | None | Successful cache read counter |
 | `metrics:cache:misses` | String | None | Cache generation counter |
 | `session:{session_id}` | Hash | Configurable | Temporary user context and activity timestamps |
+| `leaderboard:users` | Sorted set | None | Completed-job score per user |
+| `events:activity` | Stream | Capped length | Recent user-visible system activity |
 | `lock:job:{job_id}` | String | Worker lease | Prevents two workers from processing the same job |
 
 ## Queue Direction
@@ -65,3 +67,13 @@ Session hashes store only typed JSON-safe user context plus UTC creation and las
 timestamps. `SESSION_TTL_SECONDS` enforces automatic cleanup. When rolling expiration is
 enabled, successful reads update `last_seen_at` and refresh the TTL in one transaction.
 Opaque UUID identifiers prevent clients from choosing or enumerating session keys.
+
+## Leaderboard And Activity
+
+Successful worker completion increments the submitting user's score with `ZINCRBY` in the
+same transaction as the completed job state and lifecycle events. `ZREVRANGE` returns top
+users and `ZREVRANK` provides a zero-based Redis rank that the API converts to one-based.
+
+The activity Stream is approximately capped at `ACTIVITY_MAX_LENGTH`. It provides a
+human-readable feed separate from the structured job lifecycle Stream and currently
+records job submission and processing transitions.

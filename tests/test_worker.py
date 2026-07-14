@@ -18,6 +18,7 @@ def test_worker_completes_demo_job() -> None:
         mapping={
             "id": job_id,
             "type": "report_generation",
+            "user_id": "test-user",
             "payload": json.dumps({"record_count": 25}),
             "status": "queued",
             "progress": "0",
@@ -56,6 +57,7 @@ def test_worker_completes_demo_job() -> None:
     assert observed_statuses == ["processing"]
     events = redis.xrange("events:jobs")
     assert [fields["type"] for _, fields in events] == ["job.started", "job.completed"]
+    assert redis.zscore("leaderboard:users", "test-user") == 1
 
 
 def test_worker_marks_processor_failure() -> None:
@@ -66,6 +68,7 @@ def test_worker_marks_processor_failure() -> None:
         mapping={
             "id": job_id,
             "type": "report_generation",
+            "user_id": "failing-user",
             "payload": json.dumps({"force_failure": True}),
             "status": "queued",
             "progress": "0",

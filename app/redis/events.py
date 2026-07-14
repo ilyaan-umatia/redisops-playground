@@ -21,3 +21,19 @@ def job_event_fields(
         "timestamp": occurred_at.isoformat(),
         "detail": json.dumps(detail) if detail is not None else "",
     }
+
+
+def activity_event_fields(
+    event_type: str,
+    message: str,
+    reference_id: str,
+    *,
+    timestamp: datetime | None = None,
+) -> dict[str, str]:
+    occurred_at = timestamp or datetime.now(UTC)
+    return {
+        "type": event_type,
+        "message": message,
+        "reference_id": reference_id,
+        "timestamp": occurred_at.isoformat(),
+    }

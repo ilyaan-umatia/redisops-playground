@@ -17,6 +17,7 @@ vertical slice implements a Redis-backed background job queue with a separate wo
 - fixed-window counters and sliding-window sorted-set rate limiting
 - cache-aside JSON responses with TTL, metrics, and invalidation
 - expiring Redis Hash sessions with rolling expiration
+- sorted-set completion leaderboard and bounded activity feed
 
 ## Architecture
 
@@ -92,6 +93,9 @@ docker build --target test -t redisops-tests .
 | `POST` | `/sessions` | Create an expiring user session |
 | `GET` | `/sessions/{session_id}` | Read and refresh a session |
 | `DELETE` | `/sessions/{session_id}` | Delete a session |
+| `GET` | `/leaderboard` | List top users by completed jobs |
+| `GET` | `/leaderboard/{user_id}` | Read a user's score and rank |
+| `GET` | `/activity` | Read recent human-readable activity |
 
 Both rate-limit demo routes require an `X-Client-ID` header. Allowed responses report the
 limit and remaining requests. Blocked responses return `429 Too Many Requests` with a
@@ -104,7 +108,6 @@ key contracts live in [docs/redis-keys.md](docs/redis-keys.md).
 
 ## Current Scope
 
-Phases 1-6 are implemented: foundation, Job Queue MVP, Real-Time Updates, Rate Limiting,
-Response Cache, and Sessions. Session records are UUID-addressed hashes with automatic
-expiration and optional rolling TTL refresh. Leaderboards, retries, and the dashboard
-intentionally come in later phases.
+Phases 1-7 are implemented. Successful job completion updates a Redis sorted-set
+leaderboard transactionally, while a capped Stream exposes recent human-readable system
+activity. Reliability hardening and the dashboard intentionally come in later phases.
