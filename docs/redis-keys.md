@@ -9,6 +9,8 @@ All keys are namespaced by purpose and use lowercase colon-separated names.
 | `queue:jobs:processing` | List | None | Job IDs claimed by a worker |
 | `jobs:index` | Sorted set | None | Job IDs scored by creation time for bounded newest-first listing |
 | `events:jobs` | Stream | Capped length | Durable ordered job lifecycle events for history and SSE clients |
+| `rate_limit:fixed:{route}:{client_id}:{bucket}` | String | Two windows | Time-bucketed request counter |
+| `rate_limit:sliding:{route}:{client_id}` | Sorted set | Window length | Request timestamps in the active sliding window |
 | `lock:job:{job_id}` | String | Worker lease | Prevents two workers from processing the same job |
 
 ## Queue Direction
@@ -31,3 +33,14 @@ The stream is approximately capped at `JOB_EVENTS_MAX_LENGTH` entries to bound m
 The recent-events endpoint uses `XREVRANGE`. The live endpoint uses blocking `XREAD` and
 sends each Redis stream ID as the SSE event ID. Browsers can reconnect with
 `Last-Event-ID` and continue after the last event they received.
+
+## Rate Limiting
+
+The fixed-window limiter increments one counter per route, client, and calculated time
+bucket. Its implementation is cheap and fully atomic, but traffic can burst around a
+bucket boundary. Old bucket keys expire automatically.
+
+The sliding-window limiter removes expired timestamps and stores each accepted request in
+a sorted set. It uses `WATCH/MULTI` optimistic transactions so concurrent requests cannot
+both consume the final slot. This strategy is smoother and more precise but uses more
+memory and commands per request.

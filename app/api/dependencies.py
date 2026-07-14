@@ -7,6 +7,7 @@ from app.config import Settings, get_settings
 from app.redis.client import get_redis
 from app.services.events import EventService
 from app.services.jobs import JobService
+from app.services.rate_limit import RateLimitService
 
 RedisDependency = Annotated[Redis, Depends(get_redis)]
 SettingsDependency = Annotated[Settings, Depends(get_settings)]
@@ -24,3 +25,10 @@ def get_event_service(redis: RedisDependency, settings: SettingsDependency) -> E
 
 
 EventServiceDependency = Annotated[EventService, Depends(get_event_service)]
+
+
+def get_rate_limit_service(redis: RedisDependency) -> RateLimitService:
+    return RateLimitService(redis)
+
+
+RateLimitServiceDependency = Annotated[RateLimitService, Depends(get_rate_limit_service)]

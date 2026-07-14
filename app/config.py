@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     job_index_key: str = "jobs:index"
     job_events_stream_key: str = "events:jobs"
     job_events_max_length: int = Field(default=1_000, ge=100, le=100_000)
+    fixed_rate_limit: int = Field(default=5, ge=1, le=10_000)
+    fixed_rate_window_seconds: int = Field(default=60, ge=1, le=86_400)
+    sliding_rate_limit: int = Field(default=5, ge=1, le=10_000)
+    sliding_rate_window_seconds: int = Field(default=60, ge=1, le=86_400)
     job_ttl_seconds: int = Field(default=86_400, ge=60)
     worker_poll_timeout_seconds: int = Field(default=5, ge=1, le=60)
     worker_job_delay_seconds: float = Field(default=2, ge=0, le=60)
