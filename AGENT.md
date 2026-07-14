@@ -423,6 +423,18 @@ The project is complete when:
 - tests pass
 - README explains setup, architecture, and Redis concepts
 
+## Implementation Status
+
+- Phase 1: complete - foundation and Docker Compose
+- Phase 2: complete - Redis job queue MVP
+- Phase 3: complete - durable events and SSE
+- Phase 4: complete - fixed and sliding-window rate limiting
+- Phase 5: complete - response cache and invalidation
+- Phase 6: complete - expiring session store
+- Phase 7: complete - leaderboard and activity feed
+- Phase 8: complete - retries, dead letters, and worker reliability
+- Phase 9: complete - dashboard, CI, architecture docs, scripts, and integration tests
+
 ## What The Agent Should Do In Every Session
 
 At the start of each work session:

@@ -1,4 +1,7 @@
+from pathlib import Path
+
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 
 from app.api.routes import cache, events, health, jobs, leaderboard, metrics, rate_limit, sessions
 from app.config import get_settings
@@ -21,6 +24,11 @@ def create_app() -> FastAPI:
     application.include_router(cache.router)
     application.include_router(sessions.router)
     application.include_router(leaderboard.router)
+
+    @application.get("/", include_in_schema=False, response_class=FileResponse)
+    async def dashboard() -> FileResponse:
+        return FileResponse(Path(__file__).parent / "static" / "dashboard.html")
+
     return application
 
 
